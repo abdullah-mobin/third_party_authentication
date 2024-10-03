@@ -7,12 +7,17 @@ import (
 	"github.com/gofiber/fiber/v2"
 	jwtware "github.com/gofiber/jwt/v3"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 )
 
 func JWTgenerate(username string) (string, error) {
 	claims := jwt.MapClaims{
+		"jti":    uuid.New().String(),
+		"aud":    "3rd-party-auth.com",
+		"iss":    "3rd-party-auth.com",
+		"iat":    time.Now().Unix(),
 		"user":   username,
-		"expire": time.Now().Add(time.Minute * 30).Unix(),
+		"expire": time.Now().Add(time.Minute * 60).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

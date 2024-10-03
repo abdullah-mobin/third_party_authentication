@@ -45,12 +45,9 @@ func Login(c *fiber.Ctx) error {
 	}
 
 	if registered.Password == provided.Password {
-		token, err := middleware.JWTgenerate(provided.Password)
+		token, err := middleware.JWTgenerate(provided.Username)
 		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error":   "internal server error",
-				"message": "internal server error",
-			})
+			return ErrorInternalServerErr(c, err, "failed to generate JWT")
 		}
 		return c.JSON(fiber.Map{
 			"message": "login successful",
@@ -85,36 +82,40 @@ func LoginWithGoogle(c *fiber.Ctx) error {
 }
 
 func GoogleCallback(c *fiber.Ctx) error {
-	code := c.Query("code")
-	if code == "" {
-		return c.Status(fiber.StatusBadRequest).SendString("Code not found")
-	}
-
 	oauthconf := oauthConfig()
 
-	token, err := oauthconf.Exchange(context.Background(), code)
+	token, err := oauthconf.Exchange(context.Background(), c.FormValue("code"))
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).SendString("Failed to exchange token: " + err.Error())
+		return ErrorInternalServerErr(c, err, "failed to exchange token")
 	}
 
 	client := oauthconf.Client(context.Background(), token)
 	resp, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo")
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).SendString("Failed to get user info: " + err.Error())
+		return ErrorInternalServerErr(c, err, "failed to get user info")
 	}
 	defer resp.Body.Close()
 
 	var user model.GoogleUser
 	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
-		return c.Status(fiber.StatusInternalServerError).SendString("Failed to decode user info: " + err.Error())
+		return ErrorInternalServerErr(c, err, "failed to decode user info")
 	}
 
-	return c.Redirect(os.Getenv("DASHBOARD"))
+	appAuthJWT, err := middleware.JWTgenerate(user.Name)
+	if err != nil {
+		return ErrorInternalServerErr(c, err, "failed to assign JWT for google user")
+	}
+
+	return c.JSON(fiber.Map{
+		"message":  "login successful",
+		"token":    appAuthJWT,
+		"redirect": os.Getenv("DASHBOARD"),
+	})
 }
 
-func LoginWithFacebook(c *fiber.Ctx) error {
-	return c.JSON(fiber.Map{
-		"status":  "ok",
-		"message": "NC",
+func ErrorInternalServerErr(c *fiber.Ctx, err error, msg string) error {
+	return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+		"error":   err,
+		"message": msg,
 	})
 }
